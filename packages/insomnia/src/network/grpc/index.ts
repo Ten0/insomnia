@@ -24,11 +24,24 @@ const _createClient = (
     return undefined;
   }
 
-  const credentials = enableTls ? grpc.credentials.createSsl() : grpc.credentials.createInsecure();
+  let credentials;
+  if (enableTls) {
+    const sslArgs = [];
+    if (req.sslParams) {
+      sslArgs.push(Buffer.from(req.sslParams.caFileContent));
+      if (req.sslParams.certChainFileContent && req.sslParams.privateKeyFileContent) {
+        sslArgs.push(Buffer.from(req.sslParams.privateKeyFileContent));
+        sslArgs.push(Buffer.from(req.sslParams.certChainFileContent));
+      }
+    }
+    credentials = grpc.credentials.createSsl(...sslArgs);
+  } else {
+    credentials = grpc.credentials.createInsecure();
+  }
   console.log(`[gRPC] connecting to url=${url} ${enableTls ? 'with' : 'without'} TLS`);
   // @ts-expect-error -- TSCONVERSION second argument should be provided, send an empty string? Needs testing
   const Client = grpc.makeGenericClientConstructor({});
-  return new Client(url, credentials);
+  return new Client(url, credentials, req.additionalClientOptions);
 };
 
 const _makeUnaryRequest = (

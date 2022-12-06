@@ -1,3 +1,5 @@
+import { ChannelOptions } from '@grpc/grpc-js/build/src/channel-options';
+
 import { database as db } from '../common/database';
 import type { BaseModel } from './index';
 
@@ -18,6 +20,12 @@ export interface GrpcRequestHeader {
   disabled?: boolean;
 }
 
+export interface GrpcSslParams {
+  caFileContent: string;
+  privateKeyFileContent?: string;
+  certChainFileContent?: string;
+}
+
 interface BaseGrpcRequest {
   name: string;
   url: string;
@@ -26,6 +34,8 @@ interface BaseGrpcRequest {
   protoMethodName?: string;
   body: GrpcRequestBody;
   metadata: GrpcRequestHeader[];
+  sslParams?: GrpcSslParams;
+  additionalClientOptions: Partial<ChannelOptions>;
   metaSortKey: number;
   isPrivate: boolean;
 }
@@ -48,6 +58,7 @@ export function init(): BaseGrpcRequest {
     protoFileId: '',
     protoMethodName: '',
     metadata: [],
+    additionalClientOptions: {},
     body: {
       text: '{}',
     },
