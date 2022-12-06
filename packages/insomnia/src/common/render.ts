@@ -1,4 +1,5 @@
 import clone from 'clone';
+import fs from 'fs';
 import orderedJSON from 'json-order';
 
 import * as models from '../models';
@@ -434,6 +435,55 @@ export async function getRenderedGrpcRequest(
     ignorePathRegex,
   );
   renderedRequest.description = await render(description, renderContext, null, KEEP_ON_ERROR);
+
+  let sslParamsRaw = renderContext['__grpc_ssl_params'];
+  if (typeof sslParamsRaw === 'object' && sslParamsRaw !== null) {
+    // Allow templating within paths
+    sslParamsRaw = await render(sslParamsRaw, renderContext, null);
+    // Load files
+    (await Promise.all(Object.keys(sslParamsRaw).filter(k => k.endsWith('File')).map(async k => {
+      const content: string = await (await fs.promises.readFile(sslParamsRaw[k])).toString();
+      sslParamsRaw[`${k}Content`] = content;
+    })));
+    if (typeof sslParamsRaw.caFileContent == 'string') {
+      renderedRequest.sslParams = {
+        caFileContent: sslParamsRaw.caFileContent,
+      };
+      if (typeof sslParamsRaw.privateKeyFileContent == 'string') {
+        renderedRequest.sslParams.privateKeyFileContent = sslParamsRaw.privateKeyFileContent;
+      }
+      if (typeof sslParamsRaw.certChainFileContent == 'string') {
+        renderedRequest.sslParams.certChainFileContent = sslParamsRaw.certChainFileContent;
+      }
+    }
+    console.debug('ssl params', renderedRequest.sslParams);
+  }
+  let additionalClientOptions = renderContext['__grpc_additional_client_options'];
+  if (typeof additionalClientOptions === 'object' && additionalClientOptions !== null) {
+    // Allow templating within paths
+    additionalClientOptions = await render(additionalClientOptions, renderContext, null);
+    for (const k of Object.keys(additionalClientOptions)) {
+      renderedRequest.additionalClientOptions[k.replace(/__/g, '.')] = additionalClientOptions[k];
+    }
+    console.debug('additional client options', renderedRequest.additionalClientOptions);
+  }
+  const urlMatch = renderedRequest.url.toLowerCase().match(
+    // eslint-disable-next-line max-len
+    /^(?:(?:(?<protocolNoSslOverride>grpcs?):\/\/(?<hostNoSslOverride>[a-z0-9-.]+))|(?:grpcs:\/\/\[(?<sslOverride>[a-z0-9-.]+)\]\((?<hostWithSslOverride>[a-z0-9-.]+))\)):(?<port>\d{1,5})\/?$/,
+  );
+  if (urlMatch) {
+    const {
+      protocolNoSslOverride, hostNoSslOverride, sslOverride, hostWithSslOverride, port,
+    } = urlMatch.groups as { [key: string]: (string | undefined) };
+    const host = hostWithSslOverride || hostNoSslOverride;
+    if (sslOverride) {
+      renderedRequest.additionalClientOptions['grpc.ssl_target_name_override'] = sslOverride;
+      // renderedRequest.additionalClientOptions['grpc.default_authority'] = sslOverride;
+    }
+    renderedRequest.url = `${sslOverride ? 'grpcs' : protocolNoSslOverride}://${host}:${port}`;
+    console.debug('parsed ssl target name override', sslOverride, 'for', renderedRequest.url);
+  }
+
   return renderedRequest;
 }
 
