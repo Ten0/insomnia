@@ -161,7 +161,21 @@ export const start = (
     console.log(`[gRPC] connecting to url=${url} ${enableTls ? 'with' : 'without'} TLS`);
     // @ts-expect-error -- TSCONVERSION second argument should be provided, send an empty string? Needs testing
     const Client = makeGenericClientConstructor({});
-    const client = new Client(url, enableTls ? credentials.createSsl() : credentials.createInsecure());
+    let creds;
+    if (enableTls) {
+      const sslArgs = [];
+      if (request.sslParams) {
+        sslArgs.push(Buffer.from(request.sslParams.caFileContent));
+        if (request.sslParams.certChainFileContent && request.sslParams.privateKeyFileContent) {
+          sslArgs.push(Buffer.from(request.sslParams.privateKeyFileContent));
+          sslArgs.push(Buffer.from(request.sslParams.certChainFileContent));
+        }
+      }
+      creds = credentials.createSsl(...sslArgs);
+    } else {
+      creds = credentials.createInsecure();
+    }
+    const client = new Client(url, creds, request.additionalClientOptions);
     if (!client) {
       return;
     }
